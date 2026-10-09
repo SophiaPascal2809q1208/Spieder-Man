@@ -1,0 +1,280 @@
+<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><title>Skyline Swing – Manhattan 3D</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<style>
+:root{--pn:rgba(12,18,40,.55);--tx:#fff;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--pn:rgba(5,8,20,.62)}}
+:root[data-theme=dark]{--pn:rgba(5,8,20,.62)}
+html,body{margin:0;height:100%;overflow:hidden;background:#f0b58c;color:var(--tx);font:600 14px system-ui,sans-serif}
+#c{position:fixed;inset:0;width:100%;height:100%;display:block}
+#fx{position:fixed;inset:0;pointer-events:none;background:radial-gradient(transparent 50%,rgba(255,255,255,.55));opacity:0}
+.p{position:fixed;background:var(--pn);border-radius:10px;padding:8px 14px;pointer-events:none}
+#hud{left:14px;bottom:calc(env(safe-area-inset-bottom,0px) + 14px);font-size:34px;font-weight:800;line-height:1}
+#hud small{font-size:12px;opacity:.8;margin-left:4px}
+#orb{right:14px;top:calc(env(safe-area-inset-top,0px) + 14px)}
+#dist{left:14px;top:calc(env(safe-area-inset-top,0px) + 14px);font-size:22px;opacity:0;background:none}
+#dist.s{animation:f 3.5s}
+@keyframes f{0%{opacity:0;transform:translateY(8px)}15%,80%{opacity:1;transform:none}100%{opacity:0}}
+#mm{position:fixed;right:14px;bottom:calc(env(safe-area-inset-bottom,0px) + 14px);width:140px;height:140px;border-radius:50%;border:2px solid #7fa8ff;background:#12204a}
+#hint{left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 10px);font-size:12px;white-space:nowrap;opacity:.85}
+#ov{position:fixed;inset:0;z-index:9;display:grid;place-items:center;background:rgba(10,14,30,.6)}
+.card{max-width:460px;margin:16px;padding:26px 30px;border-radius:16px;background:rgba(14,20,44,.92);text-align:center}
+.card h1{margin:0 0 6px;font-size:30px;letter-spacing:2px}
+.card p{margin:8px 0;font-weight:500;line-height:1.5;opacity:.92}
+.card b{color:#ffd24d}
+#go{margin-top:12px;padding:12px 30px;border:0;border-radius:30px;background:#e23b3b;color:#fff;font:800 16px system-ui;cursor:pointer}
+#go:disabled{opacity:.45;cursor:wait}
+#mapStatus{color:#bfe3ff;font-size:13px}
+</style></head><body>
+<canvas id="c"></canvas><div id="fx"></div>
+<div id="hud" class="p"><span id="spd">0</span><small>km/h</small></div>
+<div id="orb" class="p">◉ 0 / 30</div><div id="dist" class="p"></div>
+<canvas id="mm" width="140" height="140"></canvas>
+<div id="hint" class="p">WASD laufen · Leertaste springen / schwingen (halten) · Maus Kamera · Shift Boost · F gleiten</div>
+<div id="ov"><div class="card"><h1>SKYLINE SWING</h1>
+<p>Schwinge im Goldenen-Stunde-Licht durch eine dichte Großstadt: Hochhäuser, Straßenschluchten, Park und Hafen.</p>
+<p><b>Leertaste</b> springen, dann <b>halten</b> zum Schwingen – das Netz sucht sich einen Anker in Blickrichtung. Loslassen = Schwung mitnehmen. <b>F</b> in der Luft = Gleiten, <b>Shift</b> = Boost.</p>
+<p>Sammle alle 30 goldenen Orbs auf den Dächern. Kamera: Maus (oder Pfeiltasten).</p>
+<p id="mapStatus">Manhattan-Karte wird geladen …</p>
+<button id="go" disabled>Wird geladen …</button></div></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
+<script>
+const $=id=>document.getElementById(id),R=Math.random,PI=Math.PI,clamp=(v,a,b)=>v<a?a:v>b?b:v;
+const cv=$('c'),renderer=new THREE.WebGLRenderer({canvas:cv,antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,1.75));renderer.shadowMap.enabled=true;
+const scene=new THREE.Scene(),FOG=0xf0b58c;scene.fog=new THREE.Fog(FOG,220,1300);
+const cam=new THREE.PerspectiveCamera(70,1,.5,2500);
+function rs(){renderer.setSize(innerWidth,innerHeight,false);cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix()}
+addEventListener('resize',rs);rs();
+scene.add(new THREE.HemisphereLight(0xcfdcff,0x9a6a4a,.85));
+const sun=new THREE.DirectionalLight(0xffcf9a,1.2);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);
+const sc=sun.shadow.camera;sc.left=sc.bottom=-180;sc.right=sc.top=180;sc.near=1;sc.far=800;scene.add(sun,sun.target);
+// Himmel
+const sk=new THREE.Mesh(new THREE.SphereGeometry(2000,24,16),new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.BackSide,fog:false}));
+{const ps=sk.geometry.attributes.position,cs=[],c1=new THREE.Color(FOG),c2=new THREE.Color(0x35568c),c3=new THREE.Color();
+for(let i=0;i<ps.count;i++){c3.copy(c1).lerp(c2,clamp(ps.getY(i)/2000*1.8,0,1));cs.push(c3.r,c3.g,c3.b)}
+sk.geometry.setAttribute('color',new THREE.Float32BufferAttribute(cs,3));scene.add(sk)}
+// Texturen
+function tex(base,win,lit){const c=document.createElement('canvas');c.width=c.height=128;const g=c.getContext('2d');g.fillStyle=base;g.fillRect(0,0,128,128);
+for(let y=0;y<8;y++)for(let x=0;x<8;x++){g.fillStyle=R()<.22?lit:win;g.fillRect(x*16+3,y*16+4,10,9)}
+const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.anisotropy=4;return t}
+const PAL=[tex('#9a5a45','#2c3446','#ffd68a'),tex('#4d6382','#a9c2de','#fff0b0'),tex('#a29c90','#3a4252','#ffd68a')];
+const M=c=>new THREE.MeshLambertMaterial({color:c}),roofM=M(0x5b5650),tankM=M(0x7a5a3e);
+// Stadt
+const bm=[],col=[],N=11,P=76;
+function box(x,z,w,d,h,p){
+ const t=PAL[p].clone();t.needsUpdate=true;t.repeat.set(Math.max(w,d)/16,h/28);
+ const sm=new THREE.MeshLambertMaterial({map:t}),m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),[sm,sm,roofM,roofM,sm,sm]);
+ m.position.set(x,h/2,z);m.castShadow=m.receiveShadow=true;scene.add(m);bm.push(m);col.push({x0:x-w/2,x1:x+w/2,z0:z-d/2,z1:z+d/2,h});
+ if(R()<.7){const k=new THREE.Mesh(new THREE.BoxGeometry(w*.3,3,d*.3),roofM);k.position.set(x+(R()-.5)*w*.4,h+1.5,z+(R()-.5)*d*.4);k.castShadow=true;scene.add(k)}
+ if(R()<.3){const k=new THREE.Mesh(new THREE.CylinderGeometry(1.8,1.8,3.5,10),tankM);k.position.set(x+w*.32,h+3,z-d*.32);k.castShadow=true;scene.add(k)}}
+const gm=new THREE.Mesh(new THREE.PlaneGeometry(N*P+80,N*P+80),M(0x3a3a3e));gm.rotation.x=-PI/2;gm.receiveShadow=true;scene.add(gm);
+const wm=new THREE.Mesh(new THREE.PlaneGeometry(8000,8000),M(0x3f6f8f));wm.rotation.x=-PI/2;wm.position.y=-1;scene.add(wm);
+const walkM=M(0x8e8a84),parkM=M(0x5c8a3c),tp=[];
+for(let i=0;i<N;i++)for(let j=0;j<N;j++){
+ const cx=(i-5)*P,cz=(j-5)*P,park=i==5&&j<4;
+ const s=new THREE.Mesh(new THREE.PlaneGeometry(62,62),park?parkM:walkM);s.rotation.x=-PI/2;s.position.set(cx,.08,cz);s.receiveShadow=true;scene.add(s);
+ if(park){for(let k=0;k<26;k++)tp.push([cx+(R()-.5)*54,cz+(R()-.5)*54,2.5+R()*2]);continue}
+ if(i==5&&j==5){box(0,0,34,34,120,2);box(0,0,22,22,170,2);box(0,0,12,12,205,1);
+  const sp=new THREE.Mesh(new THREE.ConeGeometry(1.5,26,8),roofM);sp.position.y=218;scene.add(sp);continue}
+ const cen=Math.max(Math.exp(-(cx*cx+(cz-40)**2)/(2*170*170)),.9*Math.exp(-(cx*cx+(cz-330)**2)/(2*110*110)));
+ for(const a of[-1,1])for(const b of[-1,1]){if(R()<.1)continue;
+  const w=22+R()*5,d=22+R()*5,h=22+R()*34+cen*R()*170;box(cx+a*15.5,cz+b*15.5,w,d,h,h>95?1:(R()<.6?0:2))}}
+// Bäume
+const trM=new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1,0),M(0x4f7a34),tp.length),d2=new THREE.Object3D();
+tp.forEach((t,i)=>{d2.position.set(t[0],t[2]*1.1+1,t[1]);d2.scale.setScalar(t[2]);d2.updateMatrix();trM.setMatrixAt(i,d2.matrix)});trM.castShadow=true;scene.add(trM);
+// Autos
+const carM=new THREE.InstancedMesh(new THREE.BoxGeometry(1.9,1.4,4.2),M(0xffffff),80),cars=[],dm=new THREE.Object3D(),cc=new THREE.Color();
+for(let i=0;i<80;i++){const dir=R()<.5?-1:1;cars.push({ax:i%2,c:(Math.floor(R()*10)-5)*P+38+dir*3.2,p:(R()-.5)*820,v:dir*(7+R()*8)});cc.setHSL(R(),.5,.45);carM.setColorAt(i,cc)}
+carM.castShadow=true;scene.add(carM);
+// Orbs
+const orbs=[],om=new THREE.MeshBasicMaterial({color:0xffe14d});let orbN=0;
+for(let i=0;i<30;i++){let k;do{k=Math.floor(R()*col.length)}while(col[k].h<30);const c=col[k],o=new THREE.Mesh(new THREE.SphereGeometry(1.4,12,8),om);
+ o.position.set((c.x0+c.x1)/2,c.h+5,(c.z0+c.z1)/2);scene.add(o);orbs.push(o)}
+// Held
+const hero=new THREE.Group(),model=new THREE.Group();hero.add(model);model.position.y=-1;hero.rotation.order='YXZ';scene.add(hero);
+const bl=M(0x1c3d96),rd=M(0xc3202b),wh=M(0xffffff);
+function part(geo,m,x,y,z){const o=new THREE.Mesh(geo,m);o.position.set(x,y,z);o.castShadow=true;model.add(o)}
+function limb(x,y,geo,m,off){const g=new THREE.Group();g.position.set(x,y,0);model.add(g);const o=new THREE.Mesh(geo,m);o.position.y=off;o.castShadow=true;g.add(o);return g}
+part(new THREE.BoxGeometry(.54,.74,.3),bl,0,1.37,0);part(new THREE.BoxGeometry(.56,.14,.32),rd,0,1.04,0);
+part(new THREE.SphereGeometry(.22,12,8),rd,0,1.95,0);part(new THREE.BoxGeometry(.1,.05,.04),wh,.08,1.98,.2);part(new THREE.BoxGeometry(.1,.05,.04),wh,-.08,1.98,.2);
+const legL=limb(-.13,1,new THREE.BoxGeometry(.2,.9,.22),bl,-.45),legR=limb(.13,1,new THREE.BoxGeometry(.2,.9,.22),bl,-.45);
+const armL=limb(-.37,1.65,new THREE.BoxGeometry(.15,.72,.16),rd,-.34),armR=limb(.37,1.65,new THREE.BoxGeometry(.15,.72,.16),rd,-.34),wings=[];
+[armL,armR].forEach(a=>{const w=new THREE.Mesh(new THREE.BoxGeometry(.02,.9,.55),wh);w.position.set(0,-.45,-.2);w.visible=false;a.add(w);wings.push(w)});
+const lg=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3()]),line=new THREE.Line(lg,new THREE.LineBasicMaterial({color:0xffffff}));
+line.frustumCulled=false;line.visible=false;scene.add(line);
+// Zustand
+const pos=new THREE.Vector3(14,120.01,14),v=new THREE.Vector3(),anchor=new THREE.Vector3(),tv=new THREE.Vector3(),camP=new THREE.Vector3(),rc=new THREE.Raycaster();
+let onG=false,att=false,L=30,L0=30,gl=false,cool=0,jl=false,yaw=.6,pitch=.35,lastLook=0,fx=0,fz=-1,mx=0,mz=0,ml=0,ang=0,spd=0,started=false,paused=true,hadLock=false,mouseDown=false,dn='',mapReady=false;
+const K={};camP.set(30,128,30);
+const lock=()=>{try{const p=cv.requestPointerLock();p&&p.catch&&p.catch(()=>{})}catch(e){}};
+addEventListener('keydown',e=>{K[e.code]=true;if(/Space|Arrow/.test(e.code))e.preventDefault()});
+addEventListener('keyup',e=>K[e.code]=false);
+addEventListener('mousedown',e=>{if(e.button===0&&started&&!paused){mouseDown=true;if(document.pointerLockElement!==cv)lock()}});
+addEventListener('mouseup',()=>mouseDown=false);
+addEventListener('mousemove',e=>{if(document.pointerLockElement===cv&&!paused){yaw-=e.movementX*.0023;pitch=clamp(pitch+e.movementY*.0023,-.3,1.25);lastLook=performance.now()/1000}});
+document.addEventListener('pointerlockchange',()=>{if(document.pointerLockElement===cv)hadLock=true;else if(hadLock&&started){paused=true;$('ov').style.display='grid'}});
+$('go').onclick=()=>{if(!mapReady)return;started=true;paused=false;$('ov').style.display='none';lock()};
+function respawn(){pos.set(14,120.01,14);v.set(0,0,0);att=false;line.visible=false}
+function attach(){
+ const hv=Math.hypot(v.x,v.z);let dx=fx,dz=fz;if(ml>0){dx=mx;dz=mz}else if(hv>6){dx=v.x/hv;dz=v.z/hv}
+ const o=new THREE.Vector3(pos.x,pos.y+1.5,pos.z);
+ for(const el of[58,48,68,38,78]){const a=el*PI/180;rc.set(o,new THREE.Vector3(dx*Math.cos(a),Math.sin(a),dz*Math.cos(a)));rc.far=130;
+  const h=rc.intersectObjects(bm,false)[0];
+  if(h&&h.distance>16&&h.point.y>pos.y+8){anchor.copy(h.point);L=L0=o.distanceTo(anchor);att=true;line.visible=true;return true}}
+ return false}
+function step(dt,t){
+ fx=-Math.sin(yaw);fz=-Math.cos(yaw);const rx=Math.cos(yaw),rz=-Math.sin(yaw);
+ const ix=(K.KeyD?1:0)-(K.KeyA?1:0),iz=(K.KeyW?1:0)-(K.KeyS?1:0);
+ mx=fx*iz+rx*ix;mz=fz*iz+rz*ix;ml=Math.hypot(mx,mz);if(ml>0){mx/=ml;mz/=ml}
+ const hold=K.Space||mouseDown;
+ if(K.Space&&onG&&!jl){v.y=11;onG=false;jl=true}if(!K.Space)jl=false;
+ if(!hold&&att){att=false;line.visible=false;v.y+=3;cool=t+.1}
+ if(hold&&!att&&t>cool&&(!onG||mouseDown)){if(!attach())cool=t+.2}
+ gl=!att&&!onG&&!!K.KeyF;
+ v.y-=(gl?4.5:26)*dt;
+ if(att){
+  if(ml>0){v.x+=mx*14*dt;v.z+=mz*14*dt}
+  const sp=v.length();if(sp>3&&sp<66)v.multiplyScalar(1+(K.ShiftLeft||K.ShiftRight?.9:.3)*dt);
+  const tg=Math.max(16,L0*.7);if(L>tg)L=Math.max(tg,L-12*dt);
+ }else if(gl){
+  const hv=Math.hypot(v.x,v.z);v.x+=(ml>0?mx:fx)*20*dt;v.z+=(ml>0?mz:fz)*20*dt;
+  if(v.y<-7)v.y=-7;if(hv>55){v.x*=55/hv;v.z*=55/hv}
+ }else if(!onG){v.x+=mx*8*dt;v.z+=mz*8*dt}
+ if(onG&&!att){const tg=K.ShiftLeft?20:10,k=Math.min(1,10*dt);v.x+=(mx*tg-v.x)*k;v.z+=(mz*tg-v.z)*k}
+ const s2=v.length();if(s2>75)v.multiplyScalar(75/s2);
+ const py=pos.y;pos.addScaledVector(v,dt);
+ if(att){tv.set(anchor.x-pos.x,anchor.y-pos.y-1.5,anchor.z-pos.z);const d=tv.length();
+  if(d>L){tv.divideScalar(d);pos.addScaledVector(tv,d-L);const vr=v.dot(tv);if(vr<0)v.addScaledVector(tv,-vr)}}
+ onG=false;
+ const out=Math.abs(pos.x)>440||Math.abs(pos.z)>440,gy=out?-1:0;
+ if(pos.y<=gy){pos.y=gy;if(v.y<0)v.y=0;onG=true;if(out){respawn();return}}
+ const r=.6;
+ for(const c of col){
+  if(pos.x>c.x0-r&&pos.x<c.x1+r&&pos.z>c.z0-r&&pos.z<c.z1+r&&pos.y<c.h){
+   if(py>=c.h-.05&&v.y<=0){pos.y=c.h;v.y=0;onG=true}
+   else{const a=pos.x-c.x0+r,b=c.x1+r-pos.x,e=pos.z-c.z0+r,d=c.z1+r-pos.z,m=Math.min(a,b,e,d);
+    if(m===a){pos.x=c.x0-r;if(v.x>0)v.x=0}else if(m===b){pos.x=c.x1+r;if(v.x<0)v.x=0}
+    else if(m===e){pos.z=c.z0-r;if(v.z>0)v.z=0}else{pos.z=c.z1+r;if(v.z<0)v.z=0}}}}
+ if(pos.y<-.5&&!out)respawn();
+}
+const mm=$('mm'),mg=mm.getContext('2d');
+function drawMap(){
+ mg.clearRect(0,0,140,140);mg.save();mg.beginPath();mg.arc(70,70,69,0,2*PI);mg.clip();mg.fillStyle='#12204a';mg.fillRect(0,0,140,140);
+ mg.save();mg.translate(70,70);mg.rotate(yaw);const s=.3;mg.translate(-pos.x*s,-pos.z*s);
+ mg.fillStyle='#2d6a3a';mg.fillRect(-27*s,-380*s-31*s,54*s,4*76*s);
+ for(const c of col){if(Math.abs(c.x0-pos.x)>260||Math.abs(c.z0-pos.z)>260)continue;mg.fillStyle=c.h>100?'#9dbcff':'#5f86e8';mg.fillRect(c.x0*s,c.z0*s,(c.x1-c.x0)*s,(c.z1-c.z0)*s)}
+ mg.fillStyle='#ffe14d';for(const o of orbs)if(o.visible){mg.beginPath();mg.arc(o.position.x*s,o.position.z*s,3,0,2*PI);mg.fill()}
+ mg.restore();mg.translate(70,70);mg.fillStyle='#fff';mg.beginPath();mg.moveTo(0,-8);mg.lineTo(6,6);mg.lineTo(0,3);mg.lineTo(-6,6);mg.fill();mg.restore()}
+const dnf=(x,z)=>Math.abs(x)>430||Math.abs(z)>430?'East River Hafen':(Math.abs(x)<38&&z<-150)?'Central Park':z>200?'Financial District':z<-100?(x<0?'Upper West Side':'Upper East Side'):'Midtown';
+const ang2=a=>Math.atan2(Math.sin(a),Math.cos(a));
+function vis(dt,t){
+ spd=v.length();const hv=Math.hypot(v.x,v.z);
+ hero.position.set(pos.x,pos.y+1,pos.z);
+ if(hv>1.5)ang+=ang2(Math.atan2(v.x,v.z)-ang)*Math.min(1,12*dt);
+ hero.rotation.y=ang;
+ hero.rotation.x=onG?.12*Math.min(hv/10,1):(gl?1.3:clamp(-v.y*.025+.25,-.8,1.2));
+ const w=Math.sin(t*(8+hv*.3))*Math.min(hv/8,1)*.9;
+ if(att){armR.rotation.set(-2.7,0,.15);armL.rotation.set(.5,0,-.3);legL.rotation.x=.5;legR.rotation.x=-.3}
+ else if(gl){armR.rotation.set(0,0,1.5);armL.rotation.set(0,0,-1.5);legL.rotation.x=legR.rotation.x=0}
+ else if(!onG){armR.rotation.set(-.3,0,.7);armL.rotation.set(-.3,0,-.7);legL.rotation.x=.4;legR.rotation.x=-.4}
+ else{armR.rotation.set(w,0,0);armL.rotation.set(-w,0,0);legL.rotation.x=-w;legR.rotation.x=w}
+ wings.forEach(m=>m.visible=gl);
+ if(att){const a=lg.attributes.position;a.setXYZ(0,pos.x,pos.y+1.7,pos.z);a.setXYZ(1,anchor.x,anchor.y,anchor.z);a.needsUpdate=true}
+ // Kamera
+ if(K.ArrowLeft){yaw+=1.9*dt;lastLook=t}if(K.ArrowRight){yaw-=1.9*dt;lastLook=t}
+ if(K.ArrowUp){pitch=clamp(pitch-1.2*dt,-.3,1.25);lastLook=t}if(K.ArrowDown){pitch=clamp(pitch+1.2*dt,-.3,1.25);lastLook=t}
+ if(hv>12&&t-lastLook>1.2)yaw+=ang2(Math.atan2(-v.x,-v.z)-yaw)*Math.min(1,dt*1.5);
+ const dist=9+Math.min(spd,60)*.1,cp=Math.cos(pitch);
+ tv.set(pos.x+Math.sin(yaw)*cp*dist,pos.y+1.6+Math.sin(pitch)*dist,pos.z+Math.cos(yaw)*cp*dist);
+ camP.lerp(tv,1-Math.exp(-9*dt));cam.position.copy(camP);cam.lookAt(pos.x,pos.y+1.8,pos.z);
+ cam.fov+=(62+Math.min(spd,70)*.5-cam.fov)*Math.min(1,4*dt);cam.updateProjectionMatrix();
+ sk.position.copy(pos);sun.position.set(pos.x+240,200,pos.z+150);sun.target.position.copy(pos);
+ // Autos & Orbs
+ cars.forEach((c,i)=>{c.p+=c.v*dt;if(Math.abs(c.p)>420)c.p=-Math.sign(c.p)*420;
+  dm.position.set(c.ax?c.c:c.p,.8,c.ax?c.p:c.c);dm.rotation.y=c.ax?0:PI/2;dm.updateMatrix();carM.setMatrixAt(i,dm.matrix)});
+ carM.instanceMatrix.needsUpdate=true;
+ for(const o of orbs){if(!o.visible)continue;o.rotation.y=t*2;o.position.y+=Math.sin(t*3+o.position.x)*.01;
+  if(o.position.distanceTo(pos)<5.5){o.visible=false;orbN++}}
+ // HUD
+ $('spd').textContent=Math.round(spd*3.6);$('orb').textContent='◉ '+orbN+' / 30'+(orbN==30?' – geschafft!':'');
+ $('fx').style.opacity=clamp((spd-32)/40,0,.8);
+ const n=dnf(pos.x,pos.z);if(n!==dn){dn=n;const e=$('dist');e.textContent=n;e.classList.remove('s');void e.offsetWidth;e.classList.add('s')}
+ drawMap()}
+let last=performance.now();
+function loop(now){requestAnimationFrame(loop);const dt=Math.min((now-last)/1000,.05);last=now;const t=now/1000;
+ if(started&&!paused){step(dt/2,t);step(dt/2,t)}
+ vis(started&&!paused?dt:0,t);renderer.render(scene,cam)}
+// Lädt das echte Manhattan-Modell und legt die Satelliten-Textur darüber.
+function loadManhattan(){
+ const status=$('mapStatus'),button=$('go');
+ status.textContent='Lade Karten-Textur …';
+ const textureLoader=new THREE.TextureLoader();
+ textureLoader.load('tex.jpg',texture=>{
+  texture.anisotropy=renderer.capabilities.getMaxAnisotropy();
+  texture.minFilter=THREE.LinearMipmapLinearFilter;
+  texture.magFilter=THREE.LinearFilter;
+  texture.generateMipmaps=true;
+  texture.encoding=THREE.sRGBEncoding;
+  texture.needsUpdate=true;
+  status.textContent='Lade 3D-Modell von Manhattan …';
+  const loader=new THREE.OBJLoader();
+  loader.load('ny_clean_up2.obj',root=>{
+   const mapMaterial=new THREE.MeshBasicMaterial({map:texture,side:THREE.DoubleSide});
+   root.traverse(node=>{
+    if(node.isMesh){
+     node.material=mapMaterial;
+     node.castShadow=false;
+     node.receiveShadow=true;
+    }
+   });
+   // X/Z an die Spielfläche anpassen; Y bleibt proportional für Gebäudehöhen.
+   root.scale.set(100,70,70);
+   root.updateMatrixWorld(true);
+   const bounds=new THREE.Box3().setFromObject(root);
+   const center=bounds.getCenter(new THREE.Vector3());
+   root.position.set(-center.x,-bounds.min.y,-center.z);
+   root.updateMatrixWorld(true);
+
+   // Die prozeduralen Gebäude bleiben als unsichtbare Kollisions-Proxy erhalten.
+   // Sichtbar ist stattdessen die echte, texturierte OBJ-Karte.
+   const proxies=bm.slice();
+   const keep=new Set([sk,hero,line,...orbs]);
+   for(const obj of scene.children){
+    if(keep.has(obj)||obj.isLight||proxies.includes(obj))continue;
+    obj.visible=false;
+   }
+   for(const mesh of proxies){
+    mesh.castShadow=false;mesh.receiveShadow=false;
+    const mats=Array.isArray(mesh.material)?mesh.material:[mesh.material];
+    for(const mat of mats){mat.colorWrite=false;mat.depthWrite=false;mat.needsUpdate=true;}
+   }
+
+   // Fallback-Boden und Wasser unter der Karte, damit kleine Mesh-Lücken nicht ins Leere fallen.
+   const water=new THREE.Mesh(new THREE.PlaneGeometry(5000,5000),new THREE.MeshBasicMaterial({color:0x3f6f8f}));
+   water.rotation.x=-PI/2;water.position.y=-1.5;scene.add(water);
+   const ground=new THREE.Mesh(new THREE.PlaneGeometry(825,850),new THREE.MeshBasicMaterial({color:0x45484c}));
+   ground.rotation.x=-PI/2;ground.position.y=-.25;scene.add(ground);
+   scene.add(root);
+
+   // Der Schwung-Anker prüft nun die sichtbare Karte statt der unsichtbaren Ersatzgebäude.
+   bm.length=0;
+   root.traverse(node=>{if(node.isMesh)bm.push(node)});
+   mapReady=true;button.disabled=false;button.textContent="Los geht's";
+   status.textContent='Manhattan-Karte geladen. Viel Spaß!';
+  },xhr=>{
+   if(xhr.lengthComputable)status.textContent='Lade 3D-Modell … '+Math.round(xhr.loaded/xhr.total*100)+' %';
+  },err=>{
+   console.error('Manhattan-Modell konnte nicht geladen werden:',err);
+   mapReady=true;button.disabled=false;button.textContent='Spiel starten';
+   status.textContent='Die Karte konnte nicht geladen werden. Starte ersatzweise die Standardstadt.';
+  });
+ },undefined,err=>{
+  console.error('Manhattan-Textur konnte nicht geladen werden:',err);
+  mapReady=true;button.disabled=false;button.textContent='Spiel starten';
+  status.textContent='Die Textur konnte nicht geladen werden. Starte ersatzweise die Standardstadt.';
+ });
+}
+loadManhattan();
+scene.updateMatrixWorld(true);requestAnimationFrame(loop);
+</script></body></html>
