@@ -1,0 +1,224 @@
+<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><title>Skyline Swing</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<style>
+:root{--pn:rgba(12,18,40,.55);--tx:#fff;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--pn:rgba(5,8,20,.62)}}
+:root[data-theme=dark]{--pn:rgba(5,8,20,.62)}
+html,body{margin:0;height:100%;overflow:hidden;background:#f0b58c;color:var(--tx);font:600 14px system-ui,sans-serif}
+#c{position:fixed;inset:0;width:100%;height:100%;display:block}
+#fx{position:fixed;inset:0;pointer-events:none;background:radial-gradient(transparent 50%,rgba(255,255,255,.55));opacity:0}
+.p{position:fixed;background:var(--pn);border-radius:10px;padding:8px 14px;pointer-events:none}
+#hud{left:14px;bottom:calc(env(safe-area-inset-bottom,0px) + 14px);font-size:34px;font-weight:800;line-height:1}
+#hud small{font-size:12px;opacity:.8;margin-left:4px}
+#orb{right:14px;top:calc(env(safe-area-inset-top,0px) + 14px)}
+#dist{left:14px;top:calc(env(safe-area-inset-top,0px) + 14px);font-size:22px;opacity:0;background:none}
+#dist.s{animation:f 3.5s}
+@keyframes f{0%{opacity:0;transform:translateY(8px)}15%,80%{opacity:1;transform:none}100%{opacity:0}}
+#mm{position:fixed;right:14px;bottom:calc(env(safe-area-inset-bottom,0px) + 14px);width:140px;height:140px;border-radius:50%;border:2px solid #7fa8ff;background:#12204a}
+#hint{left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 10px);font-size:12px;white-space:nowrap;opacity:.85}
+#ov{position:fixed;inset:0;z-index:9;display:grid;place-items:center;background:rgba(10,14,30,.6)}
+.card{max-width:460px;margin:16px;padding:26px 30px;border-radius:16px;background:rgba(14,20,44,.92);text-align:center}
+.card h1{margin:0 0 6px;font-size:30px;letter-spacing:2px}
+.card p{margin:8px 0;font-weight:500;line-height:1.5;opacity:.92}
+.card b{color:#ffd24d}.card a{color:#9fc0ff}#cr{left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top,0px) + 14px);font-size:11px;opacity:.7;padding:4px 10px}#go:disabled{opacity:.6;cursor:wait}
+#go{margin-top:12px;padding:12px 30px;border:0;border-radius:30px;background:#e23b3b;color:#fff;font:800 16px system-ui;cursor:pointer}
+</style></head><body>
+<canvas id="c"></canvas><div id="fx"></div>
+<div id="hud" class="p"><span id="spd">0</span><small>km/h</small></div>
+<div id="orb" class="p">◉ 0 / 30</div><div id="dist" class="p"></div>
+<canvas id="mm" width="140" height="140"></canvas>
+<div id="hint" class="p">WASD laufen · Leertaste springen / schwingen (halten) · Maus Kamera · Shift Boost · F gleiten</div>
+<div id="cr" class="p">Karte: „New York City. Manhattan“ von truekit · CC-BY-4.0</div>
+<div id="ov"><div class="card"><h1>SKYLINE SWING</h1>
+<p>Schwinge im Goldenen-Stunde-Licht durch <b>Manhattan</b> – eine echte 3D-Karte (Lower Manhattan bis Midtown) mit Hochhäusern bis ca. 530 m. Du startest ganz oben.</p>
+<p><b>Leertaste</b> springen, dann <b>halten</b> zum Schwingen – das Netz sucht sich einen Anker in Blickrichtung. Loslassen = Schwung mitnehmen. <b>F</b> in der Luft = Gleiten, <b>Shift</b> = Boost.</p>
+<p>Sammle alle 30 goldenen Orbs auf den Dächern. Kamera: Maus (oder Pfeiltasten).</p>
+<p style="font-size:11px;opacity:.75">Karte: Dieses Werk basiert auf „<a href="https://sketchfab.com/3d-models/new-york-city-manhattan-372bc495b3a941308f4a3198bc45e17b" target="_blank" rel="noopener">New York City. Manhattan</a>“ von <a href="https://sketchfab.com/truekit" target="_blank" rel="noopener">truekit</a>, lizenziert unter <a href="http://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC-BY-4.0</a>. Für das Spiel verkleinert und angepasst.</p>
+<button id="go" disabled>Lade Karte …</button></div></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const $=id=>document.getElementById(id),R=Math.random,PI=Math.PI,clamp=(v,a,b)=>v<a?a:v>b?b:v;
+const cv=$('c'),renderer=new THREE.WebGLRenderer({canvas:cv,antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,1.75));renderer.shadowMap.enabled=false;
+const scene=new THREE.Scene(),FOG=0xc2c9d5;scene.fog=new THREE.Fog(FOG,300,2800);scene.background=new THREE.Color(FOG);
+const cam=new THREE.PerspectiveCamera(70,1,.5,6000);
+function rs(){renderer.setSize(innerWidth,innerHeight,false);cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix()}
+addEventListener('resize',rs);rs();
+scene.add(new THREE.HemisphereLight(0xcfdcff,0x9a6a4a,.85));
+const sun=new THREE.DirectionalLight(0xffcf9a,1.2);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);
+const sc=sun.shadow.camera;sc.left=sc.bottom=-180;sc.right=sc.top=180;sc.near=1;sc.far=800;scene.add(sun,sun.target);
+// Himmel + Welt (Manhattan, Modell von truekit, CC-BY-4.0) – Daten aus manhattan.bin
+const M=c=>new THREE.MeshLambertMaterial({color:c});
+const HX=-2981.3912365352735,HZ=-2484.1737002134323,HW=1491,HH=1243,CS=4,SPAWN=[-2867.4, 322.2, 665.8],ORB=[1724.6, 69.4, -618.2, 224.6, 75.5, 609.8, -1443.4, 55.6, 385.8, -2647.4, 64.5, 289.8, -275.4, 65.7, 625.8, -1659.4, 93.2, 1221.8, -2727.4, 55.8, 929.8, -1511.4, 59.3, -266.2, 1232.6, 74.7, -110.2, -1363.4, 55.1, 1209.8, 1592.6, 57.3, -26.2, -2387.4, 74.3, -506.2, -1907.4, 55.6, 1505.8, -1259.4, 54.3, 69.8, 1336.6, 53.7, 2137.8, -2707.4, 93.7, 1361.8, -1599.4, 66.5, 1505.8, 620.6, 72.7, 1797.8, 1848.6, 52.0, 1121.8, -495.4, 56.4, 305.8, -1467.4, 78.8, -542.2, 1376.6, 58.5, 1201.8, -711.4, 68.6, 89.8, -2867.4, 328.2, 665.8, 1556.6, 53.3, 1905.8, 1796.6, 55.3, 109.8, 1764.6, 63.2, -170.2, -123.4, 75.5, 1705.8, -179.4, 63.4, 1369.8, 2488.6, 113.5, 1441.8],TEXMAP=[-1,0,1,2,-1,3,-1,4,5,6,-1],MCOL=[0x6f7078,0,0,0,0x7d8794,0,0x756f68,0,0,0,0x6a6e76];
+let HMd=null,OFF=null,SP=SPAWN.slice(),orbN=0,WN=null;const orbs=[];
+const surf=(x,z)=>{if(!HMd)return -1e4;const i=Math.floor((x-HX)/CS),j=Math.floor((z-HZ)/CS);return i<0||j<0||i>=HW||j>=HH?-1e4:HMd[j*HW+i]};
+const sk=new THREE.Group();scene.add(sk);
+const cap=new THREE.Mesh(new THREE.SphereGeometry(5000,48,12,0,2*PI,0,70*PI/180),new THREE.MeshBasicMaterial({side:THREE.BackSide,fog:false,color:FOG}));sk.add(cap);
+const wm=new THREE.Mesh(new THREE.PlaneGeometry(24000,24000),new THREE.MeshPhongMaterial({color:0x9fb4c4,shininess:120,specular:0x99aabb}));wm.rotation.x=-PI/2;scene.add(wm);
+const blob=new THREE.Mesh(new THREE.CircleGeometry(1.1,16),new THREE.MeshBasicMaterial({color:0,transparent:true,opacity:.35,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-4}));blob.rotation.x=-PI/2;scene.add(blob);
+const SH=s=>{s.uniforms.uSun={value:new THREE.Vector3(240,200,150).normalize()};
+ s.vertexShader=s.vertexShader.replace('void main() {','varying vec3 vW;\nvoid main() {').replace('#include <project_vertex>','#include <project_vertex>\nvW=(modelMatrix*vec4(transformed,1.0)).xyz;');
+ s.fragmentShader=s.fragmentShader.replace('void main() {','varying vec3 vW;uniform vec3 uSun;float bx(float x,float a,float b,float e){return smoothstep(a-e,a+e,x)*(1.-smoothstep(b-e,b+e,x));}\nvoid main() {').replace('#include <fog_fragment>',
+ 'vec3 n=normalize(cross(dFdx(vW),dFdy(vW)));vec3 c=gl_FragColor.rgb*(.5+.65*max(dot(n,uSun),0.)+.25*abs(n.y))*vec3(1.08,.97,.86);'
+ +'float wl=smoothstep(.6,.3,abs(n.y));vec2 tg=normalize(vec2(-n.z,n.x)+1e-4);vec2 q=vec2(dot(vW.xz,tg)/3.0,vW.y/3.8);'
+ +'float aa=max(fwidth(q.x),fwidth(q.y))*1.2;float fd=1.-smoothstep(.25,.7,aa);vec2 f=fract(q),id=floor(q);'
+ +'float hh=fract(sin(dot(id,vec2(12.9898,78.233)))*43758.5453);float win=bx(f.x,.16,.84,aa)*bx(f.y,.22,.78,aa);'
+ +'vec3 gl=mix(vec3(.07,.1,.15)+c*.3,vec3(1.,.78,.42),step(.82,hh)*.9);c=mix(c,gl,win*wl*fd*.85);gl_FragColor.rgb=c;\n#include <fog_fragment>')};
+const mkMat=(map,col)=>{const m=new THREE.MeshBasicMaterial(map?{map,side:THREE.DoubleSide}:{color:col,side:THREE.DoubleSide});m.onBeforeCompile=SH;return m};
+async function loadWorld(){
+ const res=await fetch('manhattan.bin');if(!res.ok)throw new Error('manhattan.bin nicht gefunden');
+ const buf=await res.arrayBuffer(),dv=new DataView(buf),lz=dv.getUint32(0,true);
+ const ds=new DecompressionStream('deflate'),w=ds.writable.getWriter();w.write(new Uint8Array(buf,4,lz));w.close();
+ const u8=new Uint8Array(await new Response(ds.readable).arrayBuffer()),d2=new DataView(u8.buffer);
+ const NC=d2.getUint32(0,true);let o=4;const sf=[];for(let i=0;i<6;i++)sf.push(d2.getFloat32(o+4*i,true));o+=24;
+ const cn=[];let NV=0,NU=0,NI=0;for(let i=0;i<NC;i++){const mt=d2.getUint32(o,true),a=d2.getUint32(o+4,true),c=d2.getUint32(o+8,true);o+=12;cn.push([mt,a,c]);NV+=a;NI+=c;if(TEXMAP[mt]>=0)NU+=a}
+ const bd=[];for(let i=0;i<NC*6;i++){bd.push(d2.getUint16(o,true)/65535);o+=2}
+ const rd=n=>{const a=new Uint16Array(n);let p=0;for(let i=0;i<n;i++){p=(p+(u8[o+i]|u8[o+n+i]<<8))&65535;a[i]=p}o+=2*n;return a};
+ const vx=rd(NV),vy=rd(NV),vz=rd(NV),uu=rd(NU),uw=rd(NU),ix=rd(NI),P=new Uint16Array(NV*3),UVa=new Uint16Array(NU*2);
+ for(let i=0;i<NV;i++){P[3*i]=vx[i];P[3*i+1]=vy[i];P[3*i+2]=vz[i]}
+ for(let i=0;i<NU;i++){UVa[2*i]=uu[i];UVa[2*i+1]=uw[i]}
+ const hl=HW*HH;HMd=new Float32Array(hl);
+ for(let r=0;r<HH;r++){let p=0;const q=r*HW;for(let c=0;c<HW;c++){p=(p+(u8[o+q+c]|u8[o+hl+q+c]<<8))&65535;HMd[q+c]=p?p/100-10:-1e4}}
+ let q=4+lz;const ni=dv.getUint32(q,true);q+=4;const ims=[];
+ for(let i=0;i<ni;i++){const l=dv.getUint32(q,true);q+=4;ims.push(createImageBitmap(new Blob([new Uint8Array(buf,q,l)],{type:'image/jpeg'})));q+=l}
+ const B=await Promise.all(ims),AN=renderer.capabilities.getMaxAnisotropy();
+ const tex=(i,rp)=>{const t=new THREE.Texture(B[i]);t.flipY=false;t.anisotropy=AN;if(rp){t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(rp,rp)}t.needsUpdate=true;return t};
+ const MT=[];for(let k=0;k<11;k++)MT[k]=mkMat(TEXMAP[k]>=0?tex(TEXMAP[k]):null,MCOL[k]);
+ WN=tex(8,480);wm.material.map=tex(7,120);wm.material.normalMap=WN;wm.material.normalScale=new THREE.Vector2(.7,.7);wm.material.needsUpdate=true;
+ cap.material.map=tex(9);cap.material.color.set(0xffffff);cap.material.needsUpdate=true;
+ const mx=Math.max(sf[3],sf[4],sf[5]);let v0=0,u0=0,i0=0;
+ for(let t=0;t<NC;t++){const[mt,nv,nI]=cn[t],g=new THREE.BufferGeometry(),b=bd.slice(t*6,t*6+6);
+  g.setAttribute('position',new THREE.BufferAttribute(P.subarray(v0*3,(v0+nv)*3),3,true));
+  if(TEXMAP[mt]>=0){g.setAttribute('uv',new THREE.BufferAttribute(UVa.subarray(u0*2,(u0+nv)*2),2,true));u0+=nv}
+  g.setIndex(new THREE.BufferAttribute(ix.subarray(i0,i0+nI),1));
+  g.boundingSphere=new THREE.Sphere(new THREE.Vector3((b[0]+b[3])/2,(b[1]+b[4])/2,(b[2]+b[5])/2),Math.hypot((b[3]-b[0])*sf[3],(b[4]-b[1])*sf[4],(b[5]-b[2])*sf[5])/2/mx*1.03);
+  const m=new THREE.Mesh(g,MT[mt]);m.scale.set(sf[3],sf[4],sf[5]);m.position.set(sf[0],sf[1],sf[2]);m.matrixAutoUpdate=false;m.updateMatrix();scene.add(m);v0+=nv;i0+=nI}
+ const S=3,mw=Math.ceil(HW/S),mh=Math.ceil(HH/S);OFF=document.createElement('canvas');OFF.width=mw;OFF.height=mh;
+ const og=OFF.getContext('2d'),id=og.createImageData(mw,mh);
+ for(let j=0;j<mh;j++)for(let i=0;i<mw;i++){const h=HMd[Math.min(j*S,HH-1)*HW+Math.min(i*S,HW-1)],k=(j*mw+i)*4,f=Math.min(Math.max(h,0)/250,1);
+  id.data.set(h<-9e3?[18,32,74,255]:[Math.round(70+110*f),Math.round(105+110*f),Math.round(205+50*f),255],k)}
+ og.putImageData(id,0,0);
+ const om=new THREE.MeshBasicMaterial({color:0xffe14d});
+ for(let k=0;k<30;k++){const q2=new THREE.Mesh(new THREE.SphereGeometry(3.2,14,10),om);q2.position.set(ORB[3*k],ORB[3*k+1],ORB[3*k+2]);scene.add(q2);orbs.push(q2)}
+ respawn();camP.set(SP[0]+14,SP[1]+8,SP[2]+14);
+ const go=$('go');go.disabled=false;go.textContent="Los geht's"}
+// Held
+const hero=new THREE.Group(),model=new THREE.Group();hero.add(model);model.position.y=-1;hero.rotation.order='YXZ';scene.add(hero);
+const bl=M(0x1c3d96),rd=M(0xc3202b),wh=M(0xffffff);
+function part(geo,m,x,y,z){const o=new THREE.Mesh(geo,m);o.position.set(x,y,z);o.castShadow=true;model.add(o)}
+function limb(x,y,geo,m,off){const g=new THREE.Group();g.position.set(x,y,0);model.add(g);const o=new THREE.Mesh(geo,m);o.position.y=off;o.castShadow=true;g.add(o);return g}
+part(new THREE.BoxGeometry(.54,.74,.3),bl,0,1.37,0);part(new THREE.BoxGeometry(.56,.14,.32),rd,0,1.04,0);
+part(new THREE.SphereGeometry(.22,12,8),rd,0,1.95,0);part(new THREE.BoxGeometry(.1,.05,.04),wh,.08,1.98,.2);part(new THREE.BoxGeometry(.1,.05,.04),wh,-.08,1.98,.2);
+const legL=limb(-.13,1,new THREE.BoxGeometry(.2,.9,.22),bl,-.45),legR=limb(.13,1,new THREE.BoxGeometry(.2,.9,.22),bl,-.45);
+const armL=limb(-.37,1.65,new THREE.BoxGeometry(.15,.72,.16),rd,-.34),armR=limb(.37,1.65,new THREE.BoxGeometry(.15,.72,.16),rd,-.34),wings=[];
+[armL,armR].forEach(a=>{const w=new THREE.Mesh(new THREE.BoxGeometry(.02,.9,.55),wh);w.position.set(0,-.45,-.2);w.visible=false;a.add(w);wings.push(w)});
+const lg=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3()]),line=new THREE.Line(lg,new THREE.LineBasicMaterial({color:0xffffff}));
+line.frustumCulled=false;line.visible=false;scene.add(line);
+// Zustand
+const pos=new THREE.Vector3(14,120.01,14),v=new THREE.Vector3(),anchor=new THREE.Vector3(),tv=new THREE.Vector3(),camP=new THREE.Vector3(),rc=new THREE.Raycaster();
+let onG=false,att=false,L=30,L0=30,gl=false,cool=0,jl=false,yaw=.6,pitch=.35,lastLook=0,fx=0,fz=-1,mx=0,mz=0,ml=0,ang=0,spd=0,started=false,paused=true,hadLock=false,mouseDown=false,dn='';
+const K={};camP.set(30,128,30);
+const lock=()=>{try{const p=cv.requestPointerLock();p&&p.catch&&p.catch(()=>{})}catch(e){}};
+addEventListener('keydown',e=>{K[e.code]=true;if(/Space|Arrow/.test(e.code))e.preventDefault()});
+addEventListener('keyup',e=>K[e.code]=false);
+addEventListener('mousedown',e=>{if(e.button===0&&started&&!paused){mouseDown=true;if(document.pointerLockElement!==cv)lock()}});
+addEventListener('mouseup',()=>mouseDown=false);
+addEventListener('mousemove',e=>{if(document.pointerLockElement===cv&&!paused){yaw-=e.movementX*.0023;pitch=clamp(pitch+e.movementY*.0023,-.3,1.25);lastLook=performance.now()/1000}});
+document.addEventListener('pointerlockchange',()=>{if(document.pointerLockElement===cv)hadLock=true;else if(hadLock&&started){paused=true;$('ov').style.display='grid'}});
+$('go').onclick=()=>{started=true;paused=false;$('ov').style.display='none';lock()};
+function respawn(){pos.set(SP[0],SP[1]+.05,SP[2]);v.set(0,0,0);att=false;line.visible=false}
+function attach(){
+ const hv=Math.hypot(v.x,v.z);let dx=fx,dz=fz;if(ml>0){dx=mx;dz=mz}else if(hv>6){dx=v.x/hv;dz=v.z/hv}
+ const oy=pos.y+1.5;
+ for(const el of[58,48,68,38,78]){const a=el*PI/180,ax=dx*Math.cos(a),ay=Math.sin(a),az=dz*Math.cos(a);let pd=0;
+  for(let d=8;d<=170;d+=2){
+   if(oy+ay*d<surf(pos.x+ax*d,pos.z+az*d)){
+    let lo=pd,hi=d;for(let k=0;k<6;k++){const mm2=(lo+hi)/2;if(oy+ay*mm2<surf(pos.x+ax*mm2,pos.z+az*mm2))hi=mm2;else lo=mm2}
+    const hy=oy+ay*hi;
+    if(hi>16&&hy>pos.y+8){anchor.set(pos.x+ax*hi,hy,pos.z+az*hi);L=L0=hi;att=true;line.visible=true;return true}
+    break}
+   pd=d}}
+ return false}
+function step(dt,t){
+ fx=-Math.sin(yaw);fz=-Math.cos(yaw);const rx=Math.cos(yaw),rz=-Math.sin(yaw);
+ const ix=(K.KeyD?1:0)-(K.KeyA?1:0),iz=(K.KeyW?1:0)-(K.KeyS?1:0);
+ mx=fx*iz+rx*ix;mz=fz*iz+rz*ix;ml=Math.hypot(mx,mz);if(ml>0){mx/=ml;mz/=ml}
+ const hold=K.Space||mouseDown;
+ if(K.Space&&onG&&!jl){v.y=11;onG=false;jl=true}if(!K.Space)jl=false;
+ if(!hold&&att){att=false;line.visible=false;v.y+=3;cool=t+.1}
+ if(hold&&!att&&t>cool&&(!onG||mouseDown)){if(!attach())cool=t+.2}
+ gl=!att&&!onG&&!!K.KeyF;
+ v.y-=(gl?4.5:26)*dt;
+ if(att){
+  if(ml>0){v.x+=mx*14*dt;v.z+=mz*14*dt}
+  const sp=v.length();if(sp>3&&sp<66)v.multiplyScalar(1+(K.ShiftLeft||K.ShiftRight?.9:.3)*dt);
+  const tg=Math.max(16,L0*.7);if(L>tg)L=Math.max(tg,L-12*dt);
+ }else if(gl){
+  const hv=Math.hypot(v.x,v.z);v.x+=(ml>0?mx:fx)*20*dt;v.z+=(ml>0?mz:fz)*20*dt;
+  if(v.y<-7)v.y=-7;if(hv>55){v.x*=55/hv;v.z*=55/hv}
+ }else if(!onG){v.x+=mx*8*dt;v.z+=mz*8*dt}
+ if(onG&&!att){const tg=K.ShiftLeft?20:10,k=Math.min(1,10*dt);v.x+=(mx*tg-v.x)*k;v.z+=(mz*tg-v.z)*k}
+ const s2=v.length();if(s2>75)v.multiplyScalar(75/s2);
+ const py=pos.y,ox=pos.x,oz=pos.z;pos.addScaledVector(v,dt);
+ if(att){tv.set(anchor.x-pos.x,anchor.y-pos.y-1.5,anchor.z-pos.z);const d=tv.length();
+  if(d>L){tv.divideScalar(d);pos.addScaledVector(tv,d-L);const vr=v.dot(tv);if(vr<0)v.addScaledVector(tv,-vr)}}
+ onG=false;
+ let s=surf(pos.x,pos.z);
+ if(pos.y<s){
+  if(py>=s-.4&&v.y<=0){pos.y=s;v.y=0;onG=true}
+  else{
+   if(surf(pos.x,oz)>pos.y+.8){pos.x=ox;v.x=0}
+   if(surf(pos.x,pos.z)>pos.y+.8){pos.z=oz;v.z=0}
+   s=surf(pos.x,pos.z);
+   if(pos.y<s){pos.y=s;if(v.y<0)v.y=0;onG=true}}}
+ if(pos.y<-1.5)respawn();
+}
+const mm=$('mm'),mg=mm.getContext('2d');
+function drawMap(){
+ if(!OFF)return;
+ mg.clearRect(0,0,140,140);mg.save();mg.beginPath();mg.arc(70,70,69,0,2*PI);mg.clip();mg.fillStyle='#12204a';mg.fillRect(0,0,140,140);
+ mg.save();mg.translate(70,70);mg.rotate(yaw);const s=.12*CS*3,u=CS*3;mg.scale(s,s);mg.imageSmoothingEnabled=false;
+ mg.translate(-(pos.x-HX)/u,-(pos.z-HZ)/u);mg.drawImage(OFF,0,0);
+ mg.fillStyle='#ffe14d';for(const o of orbs)if(o.visible){mg.beginPath();mg.arc((o.position.x-HX)/u,(o.position.z-HZ)/u,1.6,0,2*PI);mg.fill()}
+ mg.restore();mg.translate(70,70);mg.fillStyle='#fff';mg.beginPath();mg.moveTo(0,-8);mg.lineTo(6,6);mg.lineTo(0,3);mg.lineTo(-6,6);mg.fill();mg.restore()}
+const dnf=(x,z)=>surf(x,z)<-9e3?'New York Harbor':'Manhattan';
+const ang2=a=>Math.atan2(Math.sin(a),Math.cos(a));
+function vis(dt,t){
+ spd=v.length();const hv=Math.hypot(v.x,v.z);
+ hero.position.set(pos.x,pos.y+1,pos.z);
+ if(hv>1.5)ang+=ang2(Math.atan2(v.x,v.z)-ang)*Math.min(1,12*dt);
+ hero.rotation.y=ang;
+ hero.rotation.x=onG?.12*Math.min(hv/10,1):(gl?1.3:clamp(-v.y*.025+.25,-.8,1.2));
+ const w=Math.sin(t*(8+hv*.3))*Math.min(hv/8,1)*.9;
+ if(att){armR.rotation.set(-2.7,0,.15);armL.rotation.set(.5,0,-.3);legL.rotation.x=.5;legR.rotation.x=-.3}
+ else if(gl){armR.rotation.set(0,0,1.5);armL.rotation.set(0,0,-1.5);legL.rotation.x=legR.rotation.x=0}
+ else if(!onG){armR.rotation.set(-.3,0,.7);armL.rotation.set(-.3,0,-.7);legL.rotation.x=.4;legR.rotation.x=-.4}
+ else{armR.rotation.set(w,0,0);armL.rotation.set(-w,0,0);legL.rotation.x=-w;legR.rotation.x=w}
+ wings.forEach(m=>m.visible=gl);if(WN){WN.offset.x+=dt*.02;WN.offset.y+=dt*.013}
+ {const gs=Math.max(surf(pos.x,pos.z),0),hh=Math.max(pos.y-gs,0);blob.position.set(pos.x,gs+.15,pos.z);blob.scale.setScalar(1+hh*.02);blob.material.opacity=clamp(.4-hh*.004,.08,.4)}
+ if(att){const a=lg.attributes.position;a.setXYZ(0,pos.x,pos.y+1.7,pos.z);a.setXYZ(1,anchor.x,anchor.y,anchor.z);a.needsUpdate=true}
+ // Kamera
+ if(K.ArrowLeft){yaw+=1.9*dt;lastLook=t}if(K.ArrowRight){yaw-=1.9*dt;lastLook=t}
+ if(K.ArrowUp){pitch=clamp(pitch-1.2*dt,-.3,1.25);lastLook=t}if(K.ArrowDown){pitch=clamp(pitch+1.2*dt,-.3,1.25);lastLook=t}
+ if(hv>12&&t-lastLook>1.2)yaw+=ang2(Math.atan2(-v.x,-v.z)-yaw)*Math.min(1,dt*1.5);
+ const dist=9+Math.min(spd,60)*.1,cp=Math.cos(pitch);
+ tv.set(pos.x+Math.sin(yaw)*cp*dist,pos.y+1.6+Math.sin(pitch)*dist,pos.z+Math.cos(yaw)*cp*dist);
+ {const hx=pos.x,hy=pos.y+1.8,hz=pos.z;for(let k=0;k<10;k++){const f=1-k*.1,cx=hx+(tv.x-hx)*f,cy=hy+(tv.y-hy)*f,cz=hz+(tv.z-hz)*f;if(cy>surf(cx,cz)+.8||k==9){tv.set(cx,cy,cz);break}}}
+ camP.lerp(tv,1-Math.exp(-9*dt));cam.position.copy(camP);cam.lookAt(pos.x,pos.y+1.8,pos.z);
+ cam.fov+=(62+Math.min(spd,70)*.5-cam.fov)*Math.min(1,4*dt);cam.updateProjectionMatrix();
+ sk.position.copy(pos);sun.position.set(pos.x+240,pos.y+200,pos.z+150);sun.target.position.copy(pos);
+ // Autos & Orbs
+ for(const o of orbs){if(!o.visible)continue;o.rotation.y=t*2;o.position.y+=Math.sin(t*3+o.position.x)*.01;
+  if(o.position.distanceTo(pos)<9){o.visible=false;orbN++}}
+ // HUD
+ $('spd').textContent=Math.round(spd*3.6);$('orb').textContent='◉ '+orbN+' / 30'+(orbN==30?' – geschafft!':'');
+ $('fx').style.opacity=clamp((spd-32)/40,0,.8);
+ const n=dnf(pos.x,pos.z);if(n!==dn){dn=n;const e=$('dist');e.textContent=n;e.classList.remove('s');void e.offsetWidth;e.classList.add('s')}
+ drawMap()}
+let last=performance.now();
+function loop(now){requestAnimationFrame(loop);const dt=Math.min((now-last)/1000,.05);last=now;const t=now/1000;
+ if(started&&!paused){step(dt/2,t);step(dt/2,t)}
+ vis(started&&!paused?dt:0,t);renderer.render(scene,cam)}
+scene.updateMatrixWorld(true);requestAnimationFrame(loop);
+loadWorld().catch(e=>{$("go").textContent="Fehler: manhattan.bin neben der HTML-Datei?";console.error(e)});
+</script></body></html>
