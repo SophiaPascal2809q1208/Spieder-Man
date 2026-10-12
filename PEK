@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>High Quality NYC Game</title>
+    <style> body { margin: 0; overflow: hidden; background-color: #000; } canvas { display: block; } </style>
+</head>
+<body>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com",
+                "three/addons/": "https://unpkg.com"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // 1. Szene & Kamera
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0a0a1a); // Nacht/Dämmerung-Look
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 15, 30);
+
+        // 2. High-Quality WebGL Renderer Setup
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        
+        // WICHTIG FÜR HQ: Aktiviert realistische Lichtberechnung (PBR)
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.2;
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        document.body.appendChild(renderer.domElement);
+
+        // 3. Beleuchtung (Warmes Licht für die Wolkenkratzer/Straßen)
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+        scene.add(ambientLight);
+
+        const sunLight = new THREE.DirectionLight(0xffeacc, 1.5);
+        sunLight.position.set(50, 100, 30);
+        scene.add(sunLight);
+
+        // Steuerung
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+
+        // 4. HQ Manhattan/NYC Model über CDN laden
+        const loader = new GLTFLoader();
+        const nycModelUrl = 'https://jsdelivr.net';
+
+        loader.load(nycModelUrl, (gltf) => {
+            const nycScene = gltf.scene;
+            scene.add(nycScene);
+            console.log("High Quality NYC erfolgreich geladen!");
+        }, (xhr) => {
+            console.log((xhr.loaded / xhr.total * 100) + '% geladen');
+        }, (error) => {
+            console.error("Fehler beim Laden des Modells:", error);
+        });
+
+        // 5. Animations-Schleife
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // Resize handler
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
